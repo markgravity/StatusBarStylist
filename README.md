@@ -1,8 +1,8 @@
 # StatusBarStylist
 
-StatusBarStylist is a framework to supports changing the Status Bar style with natural SwiftUI syntax.
+StatusBarStylist is a framework to support changing the Status Bar style with natural SwiftUI syntax.
 
-Thank [Philip Trauner](https://stackoverflow.com/a/71458976/10270556) for this source code and idea.
+Thanks [@Thieurom](https://github.com/Thieurom) for this perfect solution and source code. 😍
 
 ## Installation
 Requirements iOS 14+
@@ -20,23 +20,7 @@ Requirements iOS 14+
 
 ## Usage
 
-In your ```@main``` App file, simply wrap your main view in a ```RootView```.
-
-```swift
-@main
-struct ProjectApp: App {     
-    var body: some Scene {
-        WindowGroup {
-            RootView {
-                ContentView() // Change your content here 👈
-            }
-        }
-    }
-}
-```
-
-### Example
-Use the ```.statusBarStyle(_ style: UIStatusBarStyle)``` method on a View.
+Use the ```.preferredStatusBarStyle(_ style: UIStatusBarStyle)``` method on a View.
 ```swift
 struct ContentView: View {
     var body: some View {
@@ -45,14 +29,14 @@ struct ContentView: View {
             Color.black
                 .edgesIgnoringSafeArea(.all)
                 .overlay(Text("Light Status Bar").foregroundColor(.white))
-                .statusBarStyle(.lightContent) // set status bar style here
+                .preferredStatusBarStyle(.lightContent) // set status bar style here
                 .tabItem { Text("Tab 1") }
             
             // Tab 2 will have a dark status bar
             Color.white
                 .edgesIgnoringSafeArea(.all)
                 .overlay(Text("Dark Status Bar"))
-                .statusBarStyle(.darkContent) // set status bar style here
+                .preferredStatusBarStyle(.darkContent) // set status bar style here
                 .tabItem { Text("Tab 2") }
         }
     }

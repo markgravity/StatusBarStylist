@@ -2,125 +2,93 @@
 // https://docs.swift.org/swift-book
 
 import SwiftUI
+import UIKit
 
-extension UIApplication {
+private struct StatusBarViewModifier: ViewModifier {
 
-    var keyWindow: UIWindow? {
-        connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows)
-            .first {
-                $0.isKeyWindow
-            }
-    }
-}
+    // This `currentStatusBarStyle` is needed to make the modifier work when
+    // a view is presented as a `sheet` or `fullScreenCover`.
+    private var currentStatusBarStyle: UIStatusBarStyle?
+    private let preferredStatusBarStyle: UIStatusBarStyle
+    private var statusBarWindow: UIWindow?
 
-extension UIViewController {
-
-    enum Holder {
-        static var statusBarStyleStack: [UIStatusBarStyle] = .init()
+    private var statusBarViewController: StatusBarViewController? {
+        statusBarWindow?.rootViewController as? StatusBarViewController
     }
 
-    func interpose() -> Bool {
-        let sel1: Selector = #selector(
-            getter: preferredStatusBarStyle
-        )
-        let sel2: Selector = #selector(
-            getter: preferredStatusBarStyleModified
-        )
+    @SwiftUI.Environment(\.isPresented)
+    private var isPresented
 
-        let original = class_getInstanceMethod(Self.self, sel1)
-        let new = class_getInstanceMethod(Self.self, sel2)
+    init(style: UIStatusBarStyle) {
+        preferredStatusBarStyle = style
 
-        if let original = original, let new = new {
-            method_exchangeImplementations(original, new)
-
-            return true
-        }
-
-        return false
-    }
-
-    @objc dynamic var preferredStatusBarStyleModified: UIStatusBarStyle {
-        Holder.statusBarStyleStack.last ?? .default
-    }
-}
-
-struct StatusBarStyle: ViewModifier {
-
-    @Environment(\.interposed) private var interposed
-
-    let statusBarStyle: UIStatusBarStyle
-    let animationDuration: TimeInterval
-
-    private func setStatusBarStyle(_ statusBarStyle: UIStatusBarStyle) {
-        UIViewController.Holder.statusBarStyleStack.append(statusBarStyle)
-
-        UIView.animate(withDuration: animationDuration) {
-            UIApplication.shared.keyWindow?.rootViewController?.setNeedsStatusBarAppearanceUpdate()
-        }
+        statusBarWindow = UIApplication.shared.statusBarWindow
+        currentStatusBarStyle = statusBarViewController?.statusBarStyle
+        statusBarViewController?.statusBarStyle = preferredStatusBarStyle
     }
 
     func body(content: Content) -> some View {
         content
             .onAppear {
-                setStatusBarStyle(statusBarStyle)
-            }
-            .onChange(of: statusBarStyle) {
-                _ = UIViewController.Holder.statusBarStyleStack.removeLast()
-                setStatusBarStyle($0)
+                statusBarViewController?.statusBarStyle = preferredStatusBarStyle
             }
             .onDisappear {
-                _ = UIViewController.Holder.statusBarStyleStack.removeLast()
+                if isPresented, let currentStatusBarStyle {
+                    statusBarViewController?.statusBarStyle = currentStatusBarStyle
+                }
+            }
+    }
+}
 
-                UIView.animate(withDuration: animationDuration) {
-                    UIApplication.shared.keyWindow?.rootViewController?.setNeedsStatusBarAppearanceUpdate()
-                }
-            }
-            // Interposing might still be pending on initial render
-            .onChange(of: interposed) { _ in
-                UIView.animate(withDuration: animationDuration) {
-                    UIApplication.shared.keyWindow?.rootViewController?.setNeedsStatusBarAppearanceUpdate()
-                }
-            }
+private class StatusBarViewController: UIViewController {
+
+    var statusBarStyle: UIStatusBarStyle = .default {
+        didSet {
+            setNeedsStatusBarAppearanceUpdate()
+        }
+    }
+
+    override var preferredStatusBarStyle: UIStatusBarStyle {
+        statusBarStyle
+    }
+
+    init() {
+        super.init(nibName: nil, bundle: nil)
+        view.backgroundColor = .clear
+        view.isUserInteractionEnabled = false
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
 }
 
 public extension View {
 
-    func statusBarStyle(
-        _ statusBarStyle: UIStatusBarStyle,
-        animationDuration: TimeInterval = 0.3
-    ) -> some View {
-        modifier(StatusBarStyle(statusBarStyle: statusBarStyle, animationDuration: animationDuration))
+    func preferredStatusBarStyle(_ style: UIStatusBarStyle) -> some View {
+        modifier(StatusBarViewModifier(style: style))
     }
 }
 
-public struct RootView<Content>: View where Content: View {
+extension UIApplication {
 
-    @Environment(\.scenePhase) var scenePhase
-    @State var interposed: Interposed = .pending
-    @ViewBuilder let content: () -> Content
-    var interposeLock = NSLock()
+    private static let statusBarWindowTag = -9999
 
-    public var body: some View {
-        content()
-            .environment(\.interposed, interposed)
-            .onChange(of: scenePhase) { phase in
-                if case .active = phase {
-                    interposeLock.lock()
-                    if case .pending = interposed,
-                       case true = UIApplication.shared.keyWindow?.rootViewController?.interpose() {
-                        interposed = .successful
-                    } else {
-                        interposed = .failed
-                    }
-                    interposeLock.unlock()
-                }
-            }
-    }
+    fileprivate var statusBarWindow: UIWindow? {
+        guard let windowScene = connectedScenes.first as? UIWindowScene else {
+            return nil
+        }
 
-    public init(@ViewBuilder content: @escaping () -> Content) {
-        self.content = content
+        if let window = windowScene.windows.first(where: { $0.tag == Self.statusBarWindowTag }) {
+            return window
+        } else {
+            let window = UIWindow(windowScene: windowScene)
+            window.windowLevel = .statusBar
+            window.tag = Self.statusBarWindowTag
+            window.isUserInteractionEnabled = false
+            window.rootViewController = StatusBarViewController()
+            window.isHidden = false
+            return window
+        }
     }
 }
